@@ -144,7 +144,7 @@ NOTES:
  */
 //分解“异或”：两数按位做“与”运算，当相同时候返回0.
 int bitXor(int x, int y) {
-  int result =(~x & ~y) & ~ (x & y);
+  int result =~ (~x & ~y) & ~ (x & y);
   return result;
 }
 /* 
@@ -221,12 +221,9 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  int sign = 0x1 << 31;
-  int upperBound = ~(sign|0x39);
-  int lowerBound = ~0x30;
-  upperBound = sign&(upperBound+x)>>31;
-  lowerBound = sign&(lowerBound+x)>>31;
-  return !(upperBound|lowerBound);
+  int val1 = ~0x30 + 1;
+  int val2 = (1 << 31) + ~0x3a + 1;
+  return (!((val1 + x) >> 31)) & (!((val2 + x) >> 31));
 }
 /* 
  * conditional - same as x ? y : z 
@@ -249,10 +246,10 @@ int conditional(int x, int y, int z) {
  */
 //分类 1. 看符号位，正数大。 2. 符号位相同，做差比大小。   
 int isLessOrEqual(int x, int y) {
-  int comp =(y + (~x + 1) ) >> 31;
-  int sgncheck = x >> 31 ^ y >> 31;
-  int sgnmask = ~(~sgncheck+1);
-  return (~sgnmask&(x>>31 & 0x1))|(sgnmask&comp);
+  int sign = (x >> 31) + (y >> 31);
+  int comp = !((y + (~x) + 1) >> 31);
+  int val3 = x >> 31 & 1;
+  return (sign & val3) | ((~sign) & comp);
 }
 //4
 /* 
@@ -279,10 +276,24 @@ int logicalNeg(int x) {
  *  Max ops: 90
  *  Rating: 4
  */
-//00101 = 5
+//0x1100
 int howManyBits(int x) {
-  
-  return 0;
+  int b16, b8, b4, b2, b1, b0;
+  int sgn = (x >> 31); //0
+  x = (x & ~sgn) | ( ~x & sgn); //0000 0000 0000 0000 - 0000 0000 0000 1100
+  // 不断缩小范围
+  b16 = !!(x>>16)<<4;//高十六位是否有1; b16 = 0 
+  x = x>>b16;//如果有（至少需要16位），则将原数右移16位; 0000 0000 0000 0000 0000 0000 - 0000 1100
+  b8 = !!(x>>8)<<3;//剩余位高8位是否有1; b8 = 8 or 0 ; 0
+  x = x>>b8;//如果有（至少需要16+8=24位），则右移8位0000 0000 0000 0000 0000 0000 0000 - 1100
+  b4 = !!(x>>4)<<2;//0
+  x = x>>b4;// 0000 0000 0000 0000 0000 0000 0000 11 - 00
+  b2 = !!(x>>2)<<1;// 2
+  x = x>>b2;// 00 0000 0000 0000 0000 0000 0000 0000 11
+  b1 = !!(x>>1); // 1
+  x = x>>b1; //000 0000 0000 0000 0000 0000 0000 0000 1
+  b0 = x; //1
+  return b16+b8+b4+b2+b1+b0+1;//+1表示加上符号位
 }
 //float
 /* 
@@ -297,7 +308,16 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  //提取EXP与frac
+  int exp = uf & 0x7f800000; // 8
+  int frac = uf & 0x7fffff; // 23
+  if (exp == 0x7f800000) //无穷大或者NaN
+    return uf;
+  else if (exp == 0)//非正常or零
+    frac = frac << 1;              
+  else//正常
+    exp = exp + 0x800000;
+  return (uf & 0x80000000) | exp | frac;
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -312,7 +332,20 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  int exp = 0xff & (uf >> 23);
+  int frac = 0x7fffff & uf;
+  int sign = !!(uf >> 31);
+  int tmp;
+
+  if (exp > 127 + 30)
+    return 0x80000000u;
+  if (exp < 127)
+    return 0;
+  tmp = ((frac >> 23) + 1) << (exp - 127);
+  if (sign)
+    return (~tmp) + 1;
+  else
+    return tmp;
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
@@ -328,5 +361,7 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+  if (x < -127) return 0;
+  if (x > 128) return 0xff << 23;
+  return (x + 127) << 23;
 }
